@@ -9,49 +9,58 @@
 <body>
   <div class="app">
     <header class="header">
-      <div>
+      <div class="title-block">
         <h1 id="boardTitle">Blackboard</h1>
         <p id="meta" class="meta">Connect Google Drive to load a board.</p>
       </div>
-      <div class="status-strip" id="stats"></div>
+      <div class="header-meta">
+        <div id="saveState" class="save-state">Local</div>
+        <div class="status-strip" id="stats"></div>
+      </div>
     </header>
-
-    <section class="drive-panel" aria-label="Google Drive settings">
-      <div class="drive-field">
-        <label for="clientIdInput">Google OAuth Client ID</label>
-        <input id="clientIdInput" type="text" autocomplete="off" placeholder="000000000000-xxxx.apps.googleusercontent.com">
-      </div>
-      <div class="drive-actions">
-        <button type="button" id="saveClientButton">Save Client ID</button>
-        <button type="button" id="signInButton">Connect Google</button>
-        <button type="button" id="findFileButton">Find Drive File</button>
-        <button type="button" id="createFileButton">Create Drive File</button>
-        <button type="button" id="saveNowButton">Save Now</button>
-        <label class="file-button">
-          Import JSON
-          <input id="importInput" type="file" accept="application/json,.json">
-        </label>
-        <button type="button" id="exportButton">Export JSON</button>
-        <button type="button" id="unlinkButton">Unlink</button>
-      </div>
-      <div id="driveInfo" class="drive-info">No Drive file linked.</div>
-    </section>
 
     <section class="toolbar" aria-label="Blackboard controls">
       <input id="searchInput" class="search" type="search" placeholder="Search ID, title, body" autocomplete="off">
-      <div class="button-row">
+      <div class="filter-row" aria-label="Status filter">
         <button type="button" data-filter="all" class="active">All</button>
         <button type="button" data-filter="done">O</button>
-        <button type="button" data-filter="partial">Partial</button>
+        <button type="button" data-filter="partial">~</button>
         <button type="button" data-filter="todo">X</button>
         <button type="button" data-filter="review">*</button>
-        <button type="button" id="addSectionButton">Add Section</button>
-        <button type="button" id="expandButton">Expand All</button>
-        <button type="button" id="collapseButton">Collapse All</button>
-        <button type="button" id="reloadButton">Reload Drive</button>
       </div>
-      <div id="saveState" class="save-state">Local</div>
+      <div class="button-row">
+        <button type="button" id="addSectionButton">Add Section</button>
+        <button type="button" id="expandButton">Expand</button>
+        <button type="button" id="collapseButton">Collapse</button>
+        <button type="button" id="reloadButton">Reload</button>
+        <button type="button" id="saveNowButton">Save</button>
+        <label class="file-button">
+          Import
+          <input id="importInput" type="file" accept="application/json,.json">
+        </label>
+        <button type="button" id="exportButton">Export</button>
+      </div>
     </section>
+
+    <details class="sync-panel" aria-label="Google Drive settings">
+      <summary>
+        <span class="sync-title">Storage</span>
+        <span id="driveInfo" class="drive-info">No Drive file linked.</span>
+      </summary>
+      <div class="sync-body">
+        <div class="drive-field">
+          <label for="clientIdInput">Google OAuth Client ID</label>
+          <input id="clientIdInput" type="text" autocomplete="off" placeholder="000000000000-xxxx.apps.googleusercontent.com">
+        </div>
+        <div class="drive-actions">
+          <button type="button" id="saveClientButton">Save Client ID</button>
+          <button type="button" id="signInButton">Connect Google</button>
+          <button type="button" id="findFileButton">Find File</button>
+          <button type="button" id="createFileButton">Create File</button>
+          <button type="button" id="unlinkButton">Unlink</button>
+        </div>
+      </div>
+    </details>
 
     <main id="board" class="board" aria-live="polite"></main>
   </div>

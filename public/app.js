@@ -15,7 +15,7 @@ const STORAGE_KEYS = {
 const statusOptions = [
   { value: "none", label: "-" },
   { value: "done", label: "O" },
-  { value: "partial", label: "Partial" },
+  { value: "partial", label: "~" },
   { value: "todo", label: "X" },
   { value: "review", label: "*" }
 ];
@@ -64,8 +64,8 @@ function init() {
   clientIdInput.value = localStorage.getItem(STORAGE_KEYS.clientId) || CONFIG.googleClientId || "";
   if (isLocalFileMode) {
     document.body.classList.add("local-mode");
-    saveNowButton.textContent = "Save File";
-    reloadButton.textContent = "Reload File";
+    saveNowButton.textContent = "Save";
+    reloadButton.textContent = "Reload";
   }
   render();
   updateDriveInfo();
@@ -162,7 +162,7 @@ function updateStats() {
   statsElement.replaceChildren(
     stat("All", count.total),
     stat("O", count.done),
-    stat("Partial", count.partial),
+    stat("~", count.partial),
     stat("X", count.todo),
     stat("*", count.review)
   );
@@ -599,7 +599,9 @@ function renderSection(section, sectionIndex) {
     className: "section-count",
     text: `${flattenItems(section.items).length} items`
   });
-  const addRoot = makeElement("button", { type: "button", text: "Add Root Item" });
+  const addRoot = makeElement("button", { className: "summary-action", type: "button", text: "+ Item" });
+  addRoot.title = "Add root item";
+  addRoot.setAttribute("aria-label", `Add item to ${section.title}`);
   addRoot.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -637,8 +639,12 @@ function renderItem(item, section, parent, depth) {
   const id = makeElement("span", { className: "item-id", text: `[${item.id}]` });
   const title = makeElement("span", { className: "item-title", text: item.title });
   const status = renderStatusSelect(item);
-  const childCount = makeElement("span", { className: "child-count", text: `${item.children.length} children` });
-  const addChild = makeElement("button", { className: "summary-add", type: "button", text: "Add Child" });
+  const childCount = makeElement("span", { className: "child-count", text: String(item.children.length) });
+  childCount.title = "Child items";
+  childCount.hidden = item.children.length === 0;
+  const addChild = makeElement("button", { className: "summary-add", type: "button", text: "+" });
+  addChild.title = "Add child item";
+  addChild.setAttribute("aria-label", `Add child to ${item.title}`);
   addChild.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
