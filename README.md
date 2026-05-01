@@ -1,8 +1,11 @@
 # Blackboard
 
-Static blackboard editor for a 3D action game portfolio.
+Blackboard editor for a 3D action game portfolio.
 
-The app runs on GitHub Pages and stores the board as `Blackboard.json` in the user's Google Drive.
+The app runs in two modes:
+
+- Local preview stores the board in `document/Blackboard.json`.
+- GitHub Pages stores the board as `Blackboard.json` in the user's Google Drive.
 
 ## GitHub Pages
 
@@ -60,6 +63,14 @@ Open:
 ```text
 http://localhost:4173
 ```
+
+When opened from `localhost`, the app reads and saves this ignored local file:
+
+```text
+document/Blackboard.json
+```
+
+Use the app normally; edits are written back through the local preview server. Opening `public/index.html` directly from disk will not save to the JSON file.
 
 ## Migrate From Markdown
 

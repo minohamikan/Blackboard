@@ -2,6 +2,10 @@ const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
 const CONFIG = window.BLACKBOARD_CONFIG || {};
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+const isLocalFileMode = LOCAL_HOSTS.has(window.location.hostname);
+const localApiUrl = CONFIG.localApiUrl || "./api/blackboard";
+const localFileName = CONFIG.localFileName || "document/Blackboard.json";
 const STORAGE_KEYS = {
   clientId: "blackboard.googleClientId",
   driveFileId: "blackboard.driveFileId",
@@ -26,6 +30,7 @@ const searchInput = document.querySelector("#searchInput");
 const saveState = document.querySelector("#saveState");
 const driveInfo = document.querySelector("#driveInfo");
 const clientIdInput = document.querySelector("#clientIdInput");
+const saveClientButton = document.querySelector("#saveClientButton");
 const signInButton = document.querySelector("#signInButton");
 const findFileButton = document.querySelector("#findFileButton");
 const createFileButton = document.querySelector("#createFileButton");
@@ -39,6 +44,7 @@ const newItemId = document.querySelector("#newItemId");
 const newItemTitle = document.querySelector("#newItemTitle");
 const newItemStatus = document.querySelector("#newItemStatus");
 const dialogTarget = document.querySelector("#dialogTarget");
+const reloadButton = document.querySelector("#reloadButton");
 
 let board = createEmptyBoard();
 let activeFilter = "all";
@@ -56,9 +62,15 @@ init();
 
 function init() {
   clientIdInput.value = localStorage.getItem(STORAGE_KEYS.clientId) || CONFIG.googleClientId || "";
+  if (isLocalFileMode) {
+    document.body.classList.add("local-mode");
+    saveNowButton.textContent = "Save File";
+    reloadButton.textContent = "Reload File";
+  }
   render();
   updateDriveInfo();
   updateDriveButtons();
+  if (isLocalFileMode) loadLocalFile();
 }
 
 function createEmptyBoard() {
@@ -169,12 +181,26 @@ function setSaveState(text, className = "") {
 }
 
 function updateDriveInfo() {
+  if (isLocalFileMode) {
+    driveInfo.textContent = `Local file mode. Reading and saving ${localFileName}.`;
+    return;
+  }
+
   const auth = accessToken ? "Connected" : "Not connected";
   const linked = driveFile.id ? `${driveFile.name} (${driveFile.id})` : "No Drive file linked.";
   driveInfo.textContent = `${auth}. ${linked}`;
 }
 
 function updateDriveButtons() {
+  if (isLocalFileMode) {
+    signInButton.disabled = true;
+    findFileButton.disabled = true;
+    createFileButton.disabled = true;
+    saveNowButton.disabled = false;
+    unlinkButton.disabled = true;
+    return;
+  }
+
   const hasClientId = Boolean(getClientId());
   const signedIn = Boolean(accessToken);
   signInButton.disabled = !hasClientId;
@@ -341,7 +367,48 @@ async function loadDriveFile() {
   }
 }
 
+async function loadCurrentBoard() {
+  if (isLocalFileMode) {
+    await loadLocalFile();
+    return;
+  }
+  await loadDriveFile();
+}
+
+async function loadLocalFile() {
+  try {
+    setSaveState("Loading file", "dirty");
+    const response = await fetch(localApiUrl, { cache: "no-store" });
+
+    if (response.status === 404) {
+      board = createEmptyBoard();
+      render();
+      setSaveState("File missing", "dirty");
+      return;
+    }
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    board = normalizeBoard(await response.json());
+    render();
+    setSaveState("Loaded file", "saved");
+  } catch (error) {
+    setSaveState("Load failed", "error");
+    console.error(error);
+    window.alert(`Could not load ${localFileName}. Run npm run serve and check the local JSON file.`);
+  }
+}
+
 function scheduleSave() {
+  if (isLocalFileMode) {
+    setSaveState("Save queued", "dirty");
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveBoard, 700);
+    return;
+  }
+
   if (!driveFile.id || !accessToken) {
     setSaveState("Local only", "dirty");
     return;
@@ -355,6 +422,11 @@ function scheduleSave() {
 async function saveBoard() {
   clearTimeout(saveTimer);
   saveTimer = null;
+
+  if (isLocalFileMode) {
+    await saveLocalFile();
+    return;
+  }
 
   if (!driveFile.id || !accessToken) {
     setSaveState("Local only", "dirty");
@@ -381,6 +453,30 @@ async function saveBoard() {
     setSaveState("Save failed", "error");
     console.error(error);
     window.alert(error.message);
+  }
+}
+
+async function saveLocalFile() {
+  try {
+    setSaveState("Saving file", "dirty");
+    board.updatedAt = new Date().toISOString();
+    const content = JSON.stringify(normalizeBoard(board), null, 2);
+    const response = await fetch(localApiUrl, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: `${content}\n`
+    });
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    setSaveState("Saved file", "saved");
+    updateMeta();
+  } catch (error) {
+    setSaveState("Save failed", "error");
+    console.error(error);
+    window.alert(`Could not save ${localFileName}. Run npm run serve and check the local server.`);
   }
 }
 
@@ -450,7 +546,7 @@ function exportJsonFile() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = driveFile.name || "Blackboard.json";
+  link.download = (isLocalFileMode ? localFileName.split("/").pop() : driveFile.name) || "Blackboard.json";
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -458,7 +554,9 @@ function exportJsonFile() {
 function updateMeta() {
   titleElement.textContent = board.title;
   document.title = board.title;
-  const source = driveFile.id ? `Drive: ${driveFile.name}` : "Local board";
+  const source = isLocalFileMode
+    ? `Local file: ${localFileName}`
+    : driveFile.id ? `Drive: ${driveFile.name}` : "Local board";
   metaElement.textContent = `${source} | Updated: ${formatUpdatedAt(board.updatedAt)}`;
   updateDriveInfo();
 }
@@ -718,7 +816,7 @@ function applyFilters() {
   }
 }
 
-document.querySelector("#saveClientButton").addEventListener("click", () => {
+saveClientButton.addEventListener("click", () => {
   localStorage.setItem(STORAGE_KEYS.clientId, getClientId());
   tokenClient = null;
   accessToken = "";
@@ -750,7 +848,7 @@ document.querySelectorAll("[data-filter]").forEach((button) => {
 
 searchInput.addEventListener("input", applyFilters);
 document.querySelector("#addSectionButton").addEventListener("click", addSection);
-document.querySelector("#reloadButton").addEventListener("click", loadDriveFile);
+reloadButton.addEventListener("click", loadCurrentBoard);
 document.querySelector("#expandButton").addEventListener("click", () => {
   document.querySelectorAll("details").forEach((details) => { details.open = true; });
 });

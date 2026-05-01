@@ -165,6 +165,15 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+body.local-mode .drive-field,
+body.local-mode #saveClientButton,
+body.local-mode #signInButton,
+body.local-mode #findFileButton,
+body.local-mode #createFileButton,
+body.local-mode #unlinkButton {
+  display: none;
+}
+
 .toolbar {
   display: grid;
   grid-template-columns: minmax(240px, 1fr) auto auto;
