@@ -33,7 +33,8 @@ select {
   font: inherit;
 }
 
-button {
+button,
+.file-button {
   min-height: 36px;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -41,9 +42,14 @@ button {
   color: var(--text);
   padding: 7px 10px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
 }
 
-button:hover {
+button:hover,
+.file-button:hover {
   border-color: #aeb8c7;
 }
 
@@ -57,6 +63,15 @@ button.danger {
   color: var(--todo);
   background: #fff0ee;
   border-color: #fac8c2;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.file-button input {
+  display: none;
 }
 
 .app {
@@ -109,6 +124,47 @@ h1 {
   color: var(--text);
 }
 
+.drive-panel,
+.toolbar {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 10px;
+  box-shadow: var(--shadow);
+}
+
+.drive-panel {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.drive-field {
+  display: grid;
+  gap: 5px;
+}
+
+.drive-field label,
+.editor-field,
+.dialog label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.drive-actions {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.drive-info {
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 .toolbar {
   display: grid;
   grid-template-columns: minmax(240px, 1fr) auto auto;
@@ -117,11 +173,6 @@ h1 {
   position: sticky;
   top: 10px;
   z-index: 10;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-  padding: 10px;
-  box-shadow: var(--shadow);
 }
 
 .search,
@@ -149,7 +200,7 @@ select {
 }
 
 .save-state {
-  min-width: 78px;
+  min-width: 90px;
   color: var(--muted);
   font-size: 13px;
   text-align: right;
@@ -211,7 +262,7 @@ summary::-webkit-details-marker {
 
 .section > summary::before,
 .item > summary::before {
-  content: "›";
+  content: ">";
   display: inline-grid;
   place-items: center;
   color: var(--muted);
@@ -287,7 +338,7 @@ summary::-webkit-details-marker {
 }
 
 .status-select {
-  width: 92px;
+  width: 100px;
   min-height: 32px;
   padding: 4px 7px;
   font-weight: 700;
@@ -310,9 +361,6 @@ summary::-webkit-details-marker {
 .editor-field {
   display: grid;
   gap: 5px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .editor-field input {
@@ -374,9 +422,6 @@ summary::-webkit-details-marker {
 .dialog label {
   display: grid;
   gap: 5px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .dialog-actions {
@@ -389,7 +434,7 @@ summary::-webkit-details-marker {
   display: none !important;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 900px) {
   .app {
     width: min(100% - 20px, 1200px);
     padding-top: 18px;

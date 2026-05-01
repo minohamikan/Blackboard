@@ -1,10 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "start": "node server.js",
-    "blackboard": "node server.js",
     "blackboard:migrate": "node tools/migrate-blackboard-json.js",
-    "blackboard:html": "node tools/build-blackboard.js",
-    "blackboard:html:watch": "node tools/watch-blackboard.js"
+    "serve": "npx http-server public -p 4173"
   }
 }

@@ -1,18 +1,38 @@
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const DRIVE_API = "https://www.googleapis.com/drive/v3";
+const DRIVE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
+const CONFIG = window.BLACKBOARD_CONFIG || {};
+const STORAGE_KEYS = {
+  clientId: "blackboard.googleClientId",
+  driveFileId: "blackboard.driveFileId",
+  driveFileName: "blackboard.driveFileName"
+};
+
 const statusOptions = [
   { value: "none", label: "-" },
   { value: "done", label: "O" },
-  { value: "partial", label: "△" },
+  { value: "partial", label: "Partial" },
   { value: "todo", label: "X" },
-  { value: "review", label: "*" },
+  { value: "review", label: "*" }
 ];
 
 const statusLabels = new Map(statusOptions.map((option) => [option.value, option.label]));
+
 const boardElement = document.querySelector("#board");
 const titleElement = document.querySelector("#boardTitle");
 const metaElement = document.querySelector("#meta");
 const statsElement = document.querySelector("#stats");
 const searchInput = document.querySelector("#searchInput");
 const saveState = document.querySelector("#saveState");
+const driveInfo = document.querySelector("#driveInfo");
+const clientIdInput = document.querySelector("#clientIdInput");
+const signInButton = document.querySelector("#signInButton");
+const findFileButton = document.querySelector("#findFileButton");
+const createFileButton = document.querySelector("#createFileButton");
+const saveNowButton = document.querySelector("#saveNowButton");
+const importInput = document.querySelector("#importInput");
+const exportButton = document.querySelector("#exportButton");
+const unlinkButton = document.querySelector("#unlinkButton");
 const itemDialog = document.querySelector("#itemDialog");
 const itemForm = document.querySelector("#itemForm");
 const newItemId = document.querySelector("#newItemId");
@@ -20,10 +40,35 @@ const newItemTitle = document.querySelector("#newItemTitle");
 const newItemStatus = document.querySelector("#newItemStatus");
 const dialogTarget = document.querySelector("#dialogTarget");
 
-let board = null;
+let board = createEmptyBoard();
 let activeFilter = "all";
 let saveTimer = null;
 let addTarget = null;
+let tokenClient = null;
+let accessToken = "";
+let driveFile = {
+  id: localStorage.getItem(STORAGE_KEYS.driveFileId) || "",
+  name: localStorage.getItem(STORAGE_KEYS.driveFileName) || CONFIG.driveFileName || "Blackboard.json",
+  modifiedTime: ""
+};
+
+init();
+
+function init() {
+  clientIdInput.value = localStorage.getItem(STORAGE_KEYS.clientId) || CONFIG.googleClientId || "";
+  render();
+  updateDriveInfo();
+  updateDriveButtons();
+}
+
+function createEmptyBoard() {
+  return {
+    version: 1,
+    title: "Blackboard",
+    updatedAt: new Date().toISOString(),
+    sections: []
+  };
+}
 
 function makeElement(tagName, options = {}) {
   const element = document.createElement(tagName);
@@ -37,7 +82,7 @@ function makeElement(tagName, options = {}) {
 
 function normalizeStatus(status) {
   if (status === "O") return "done";
-  if (status === "△" || status === "??") return "partial";
+  if (status === "△" || status === "??" || status === "~") return "partial";
   if (status === "X") return "todo";
   if (status === "*") return "review";
   return statusOptions.some((option) => option.value === status) ? status : "none";
@@ -45,27 +90,27 @@ function normalizeStatus(status) {
 
 function normalizeItem(item) {
   return {
-    id: String(item.id || "").trim(),
-    title: String(item.title || item.id || "새 항목").trim(),
-    status: normalizeStatus(item.status),
-    body: Array.isArray(item.body) ? item.body.map(String) : [],
-    children: Array.isArray(item.children) ? item.children.map(normalizeItem) : [],
+    id: String(item?.id || "").trim(),
+    title: String(item?.title || item?.id || "New item").trim(),
+    status: normalizeStatus(item?.status),
+    body: Array.isArray(item?.body) ? item.body.map(String) : [],
+    children: Array.isArray(item?.children) ? item.children.map(normalizeItem) : []
   };
 }
 
 function normalizeBoard(data) {
   return {
     version: 1,
-    title: String(data.title || "Blackboard").trim(),
-    updatedAt: data.updatedAt || "",
-    sections: Array.isArray(data.sections)
+    title: String(data?.title || "Blackboard").trim(),
+    updatedAt: data?.updatedAt || new Date().toISOString(),
+    sections: Array.isArray(data?.sections)
       ? data.sections.map((section, index) => ({
-        id: String(section.id || `section-${index + 1}`).trim(),
-        title: String(section.title || `Section ${index + 1}`).trim(),
-        body: Array.isArray(section.body) ? section.body.map(String) : [],
-        items: Array.isArray(section.items) ? section.items.map(normalizeItem) : [],
+        id: String(section?.id || `section-${index + 1}`).trim(),
+        title: String(section?.title || `Section ${index + 1}`).trim(),
+        body: Array.isArray(section?.body) ? section.body.map(String) : [],
+        items: Array.isArray(section?.items) ? section.items.map(normalizeItem) : []
       }))
-      : [],
+      : []
   };
 }
 
@@ -87,7 +132,7 @@ function itemSearchText(item) {
     item.title,
     statusLabels.get(item.status) || "",
     ...item.body,
-    ...item.children.flatMap((child) => itemSearchText(child)),
+    ...item.children.flatMap((child) => itemSearchText(child))
   ].join(" ").toLowerCase();
 }
 
@@ -103,11 +148,11 @@ function stats() {
 function updateStats() {
   const count = stats();
   statsElement.replaceChildren(
-    stat("전체", count.total),
+    stat("All", count.total),
     stat("O", count.done),
-    stat("△", count.partial),
+    stat("Partial", count.partial),
     stat("X", count.todo),
-    stat("*", count.review),
+    stat("*", count.review)
   );
 }
 
@@ -123,64 +168,313 @@ function setSaveState(text, className = "") {
   saveState.className = `save-state ${className}`.trim();
 }
 
-async function loadBoard() {
-  setSaveState("불러오는 중");
-  const response = await fetch("/api/blackboard", { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(await response.text());
+function updateDriveInfo() {
+  const auth = accessToken ? "Connected" : "Not connected";
+  const linked = driveFile.id ? `${driveFile.name} (${driveFile.id})` : "No Drive file linked.";
+  driveInfo.textContent = `${auth}. ${linked}`;
+}
+
+function updateDriveButtons() {
+  const hasClientId = Boolean(getClientId());
+  const signedIn = Boolean(accessToken);
+  signInButton.disabled = !hasClientId;
+  findFileButton.disabled = !signedIn;
+  createFileButton.disabled = !signedIn;
+  saveNowButton.disabled = !signedIn || !driveFile.id;
+  unlinkButton.disabled = !driveFile.id;
+}
+
+function getClientId() {
+  return clientIdInput.value.trim();
+}
+
+function ensureClientId() {
+  const clientId = getClientId();
+  if (!clientId) {
+    throw new Error("Set a Google OAuth Client ID first.");
   }
-  board = normalizeBoard(await response.json());
-  render();
-  setSaveState("대기 중");
+  return clientId;
+}
+
+function ensureGoogleLoaded() {
+  return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      if (window.google?.accounts?.oauth2) {
+        clearInterval(timer);
+        resolve();
+      } else if (Date.now() - startedAt > 8000) {
+        clearInterval(timer);
+        reject(new Error("Google Identity script did not load."));
+      }
+    }, 50);
+  });
+}
+
+async function signIn() {
+  try {
+    const clientId = ensureClientId();
+    await ensureGoogleLoaded();
+
+    setSaveState("Connecting", "dirty");
+    tokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: DRIVE_SCOPE,
+      callback: (response) => {
+        if (response.error) {
+          setSaveState("Auth failed", "error");
+          console.error(response);
+          return;
+        }
+
+        accessToken = response.access_token;
+        updateDriveInfo();
+        updateDriveButtons();
+        setSaveState("Drive ready", "saved");
+      }
+    });
+
+    tokenClient.requestAccessToken({ prompt: "consent" });
+  } catch (error) {
+    setSaveState("Auth failed", "error");
+    console.error(error);
+    window.alert(error.message);
+  }
+}
+
+async function driveFetch(url, options = {}) {
+  if (!accessToken) throw new Error("Connect Google first.");
+
+  const headers = new Headers(options.headers || {});
+  headers.set("Authorization", `Bearer ${accessToken}`);
+  const response = await fetch(url, { ...options, headers });
+
+  if (response.status === 401 || response.status === 403) {
+    setSaveState("Reconnect Google", "error");
+  }
+
+  return response;
+}
+
+async function findDriveFile() {
+  try {
+    setSaveState("Finding", "dirty");
+    const fileName = driveFile.name || CONFIG.driveFileName || "Blackboard.json";
+    const query = encodeURIComponent(`name='${fileName.replaceAll("'", "\\'")}' and trashed=false`);
+    const fields = encodeURIComponent("files(id,name,modifiedTime)");
+    const response = await driveFetch(`${DRIVE_API}/files?q=${query}&fields=${fields}&orderBy=modifiedTime desc`);
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    const data = await response.json();
+    const file = data.files?.[0];
+    if (!file) {
+      setSaveState("No file", "error");
+      window.alert(`No ${fileName} file created by this app was found. Use Create Drive File or import JSON.`);
+      return;
+    }
+
+    setLinkedFile(file);
+    await loadDriveFile();
+  } catch (error) {
+    setSaveState("Find failed", "error");
+    console.error(error);
+    window.alert(error.message);
+  }
+}
+
+async function createDriveFile() {
+  try {
+    setSaveState("Creating", "dirty");
+    const now = new Date().toISOString();
+    board.updatedAt = now;
+    const content = JSON.stringify(normalizeBoard(board), null, 2);
+    const metadata = {
+      name: driveFile.name || CONFIG.driveFileName || "Blackboard.json",
+      mimeType: "application/json"
+    };
+    const boundary = makeBoundary();
+
+    const response = await driveFetch(`${DRIVE_UPLOAD_API}/files?uploadType=multipart&fields=id,name,modifiedTime`, {
+      method: "POST",
+      headers: multipartHeaders(boundary),
+      body: multipartBody(boundary, metadata, content)
+    });
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    const file = await response.json();
+    setLinkedFile(file);
+    setSaveState("Created", "saved");
+    updateMeta();
+  } catch (error) {
+    setSaveState("Create failed", "error");
+    console.error(error);
+    window.alert(error.message);
+  }
+}
+
+async function loadDriveFile() {
+  if (!driveFile.id) {
+    setSaveState("No file", "error");
+    return;
+  }
+
+  try {
+    setSaveState("Loading", "dirty");
+    const response = await driveFetch(`${DRIVE_API}/files/${driveFile.id}?alt=media`);
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    board = normalizeBoard(await response.json());
+    render();
+    setSaveState("Loaded", "saved");
+  } catch (error) {
+    setSaveState("Load failed", "error");
+    console.error(error);
+    window.alert(error.message);
+  }
 }
 
 function scheduleSave() {
-  setSaveState("저장 대기", "dirty");
+  if (!driveFile.id || !accessToken) {
+    setSaveState("Local only", "dirty");
+    return;
+  }
+
+  setSaveState("Save queued", "dirty");
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveBoard, 500);
+  saveTimer = setTimeout(saveBoard, 700);
 }
 
 async function saveBoard() {
   clearTimeout(saveTimer);
   saveTimer = null;
-  setSaveState("저장 중", "dirty");
+
+  if (!driveFile.id || !accessToken) {
+    setSaveState("Local only", "dirty");
+    return;
+  }
 
   try {
-    const response = await fetch("/api/blackboard", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(board),
+    setSaveState("Saving", "dirty");
+    board.updatedAt = new Date().toISOString();
+    const content = JSON.stringify(normalizeBoard(board), null, 2);
+    const response = await driveFetch(`${DRIVE_UPLOAD_API}/files/${driveFile.id}?uploadType=media`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: `${content}\n`
     });
 
     if (!response.ok) {
-      const payload = await response.json().catch(() => null);
-      throw new Error(payload?.error || response.statusText);
+      throw new Error(await response.text());
     }
 
-    board = normalizeBoard(await response.json());
-    metaElement.textContent = `원본: document/Blackboard.json · 갱신: ${formatUpdatedAt(board.updatedAt)}`;
-    updateStats();
-    setSaveState("저장됨", "saved");
+    setSaveState("Saved", "saved");
+    updateMeta();
   } catch (error) {
-    setSaveState("저장 실패", "error");
+    setSaveState("Save failed", "error");
     console.error(error);
+    window.alert(error.message);
   }
+}
+
+function multipartHeaders(boundary) {
+  return { "Content-Type": `multipart/related; boundary=${boundary}` };
+}
+
+function multipartBody(boundary, metadata, content) {
+  return [
+    `--${boundary}`,
+    "Content-Type: application/json; charset=UTF-8",
+    "",
+    JSON.stringify(metadata),
+    `--${boundary}`,
+    "Content-Type: application/json; charset=UTF-8",
+    "",
+    content,
+    `--${boundary}--`,
+    ""
+  ].join("\r\n");
+}
+
+function makeBoundary() {
+  return `blackboard_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function setLinkedFile(file) {
+  driveFile = {
+    id: file.id,
+    name: file.name || driveFile.name || "Blackboard.json",
+    modifiedTime: file.modifiedTime || ""
+  };
+  localStorage.setItem(STORAGE_KEYS.driveFileId, driveFile.id);
+  localStorage.setItem(STORAGE_KEYS.driveFileName, driveFile.name);
+  updateDriveInfo();
+  updateDriveButtons();
+}
+
+function unlinkDriveFile() {
+  driveFile.id = "";
+  localStorage.removeItem(STORAGE_KEYS.driveFileId);
+  updateDriveInfo();
+  updateDriveButtons();
+  setSaveState("Local", "");
+}
+
+function importJsonFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      board = normalizeBoard(JSON.parse(String(reader.result)));
+      render();
+      setSaveState("Imported", "dirty");
+      scheduleSave();
+    } catch (error) {
+      setSaveState("Import failed", "error");
+      window.alert(error.message);
+    }
+  };
+  reader.readAsText(file, "utf-8");
+}
+
+function exportJsonFile() {
+  const blob = new Blob([`${JSON.stringify(normalizeBoard(board), null, 2)}\n`], {
+    type: "application/json"
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = driveFile.name || "Blackboard.json";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function updateMeta() {
+  titleElement.textContent = board.title;
+  document.title = board.title;
+  const source = driveFile.id ? `Drive: ${driveFile.name}` : "Local board";
+  metaElement.textContent = `${source} | Updated: ${formatUpdatedAt(board.updatedAt)}`;
+  updateDriveInfo();
 }
 
 function formatUpdatedAt(value) {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("ko-KR", {
+  return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
-    timeStyle: "short",
+    timeStyle: "short"
   }).format(date);
 }
 
 function render() {
-  titleElement.textContent = board.title;
-  document.title = board.title;
-  metaElement.textContent = `원본: document/Blackboard.json · 갱신: ${formatUpdatedAt(board.updatedAt)}`;
+  updateMeta();
   updateStats();
 
   const fragment = document.createDocumentFragment();
@@ -198,16 +492,16 @@ function renderSection(section, sectionIndex) {
     section.id,
     section.title,
     ...section.body,
-    ...section.items.flatMap((item) => itemSearchText(item)),
+    ...section.items.flatMap((item) => itemSearchText(item))
   ].join(" ").toLowerCase();
 
   const summary = makeElement("summary");
   const title = makeElement("span", { className: "section-title", text: section.title });
   const count = makeElement("span", {
     className: "section-count",
-    text: `${flattenItems(section.items).length}개 항목`,
+    text: `${flattenItems(section.items).length} items`
   });
-  const addRoot = makeElement("button", { type: "button", text: "루트 항목 추가" });
+  const addRoot = makeElement("button", { type: "button", text: "Add Root Item" });
   addRoot.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -218,7 +512,7 @@ function renderSection(section, sectionIndex) {
 
   const body = makeElement("div", { className: "section-body" });
   const note = makeElement("textarea", { className: "section-note", value: section.body.join("\n") });
-  note.placeholder = "섹션 메모";
+  note.placeholder = "Section notes";
   note.addEventListener("input", () => {
     section.body = note.value.split("\n");
     scheduleSave();
@@ -245,8 +539,8 @@ function renderItem(item, section, parent, depth) {
   const id = makeElement("span", { className: "item-id", text: `[${item.id}]` });
   const title = makeElement("span", { className: "item-title", text: item.title });
   const status = renderStatusSelect(item);
-  const childCount = makeElement("span", { className: "child-count", text: `${item.children.length}개 하위` });
-  const addChild = makeElement("button", { className: "summary-add", type: "button", text: "하위 추가" });
+  const childCount = makeElement("span", { className: "child-count", text: `${item.children.length} children` });
+  const addChild = makeElement("button", { className: "summary-add", type: "button", text: "Add Child" });
   addChild.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -260,17 +554,19 @@ function renderItem(item, section, parent, depth) {
   const idField = renderInputField("ID", item.id, (value) => {
     item.id = value.trim();
     id.textContent = `[${item.id || "ID"}]`;
+    details.dataset.search = itemSearchText(item);
     scheduleSave();
   });
-  const titleField = renderInputField("제목", item.title, (value) => {
+  const titleField = renderInputField("Title", item.title, (value) => {
     item.title = value;
-    title.textContent = value || "새 항목";
+    title.textContent = value || "New item";
+    details.dataset.search = itemSearchText(item);
     scheduleSave();
   });
   editorGrid.append(idField, titleField);
 
   const bodyEditor = makeElement("textarea", { className: "body-editor", value: item.body.join("\n") });
-  bodyEditor.placeholder = "완료 조건, 근거, 현재 판단 등을 적습니다.";
+  bodyEditor.placeholder = "Completion conditions, reasons, notes";
   bodyEditor.addEventListener("input", () => {
     item.body = bodyEditor.value.split("\n");
     details.dataset.search = itemSearchText(item);
@@ -278,9 +574,9 @@ function renderItem(item, section, parent, depth) {
   });
 
   const actions = makeElement("div", { className: "item-actions" });
-  const addChildBody = makeElement("button", { type: "button", text: "하위 추가" });
+  const addChildBody = makeElement("button", { type: "button", text: "Add Child" });
   addChildBody.addEventListener("click", () => openAddDialog({ section, parent: item }));
-  const deleteButton = makeElement("button", { className: "danger", type: "button", text: "삭제" });
+  const deleteButton = makeElement("button", { className: "danger", type: "button", text: "Delete" });
   deleteButton.addEventListener("click", () => deleteItem(section, parent, item));
   actions.append(addChildBody, deleteButton);
 
@@ -329,9 +625,9 @@ function stopSummaryToggle(element) {
 function openAddDialog(target) {
   addTarget = target;
   const parentLabel = target.parent ? `[${target.parent.id}] ${target.parent.title}` : target.section.title;
-  dialogTarget.textContent = `추가 위치: ${parentLabel}`;
+  dialogTarget.textContent = `Target: ${parentLabel}`;
   newItemId.value = suggestChildId(target.section, target.parent);
-  newItemTitle.value = "새 항목";
+  newItemTitle.value = "New item";
   newItemStatus.value = "todo";
   itemDialog.showModal();
   newItemTitle.focus();
@@ -356,7 +652,7 @@ itemForm.addEventListener("submit", (event) => {
     title: newItemTitle.value,
     status: newItemStatus.value,
     body: [],
-    children: [],
+    children: []
   });
 
   if (addTarget.parent) addTarget.parent.children.push(item);
@@ -374,7 +670,7 @@ document.querySelector("#cancelItemButton").addEventListener("click", () => {
 });
 
 function deleteItem(section, parent, item) {
-  if (!window.confirm(`[${item.id}] 항목과 모든 하위 항목을 삭제할까요?`)) return;
+  if (!window.confirm(`Delete [${item.id}] and all children?`)) return;
   const list = parent ? parent.children : section.items;
   const index = list.indexOf(item);
   if (index >= 0) list.splice(index, 1);
@@ -383,7 +679,7 @@ function deleteItem(section, parent, item) {
 }
 
 function addSection() {
-  const title = window.prompt("새 섹션 제목");
+  const title = window.prompt("New section title");
   if (!title) return;
   const id = `section-${board.sections.length + 1}`;
   board.sections.push({ id, title: title.trim(), body: [], items: [] });
@@ -422,6 +718,27 @@ function applyFilters() {
   }
 }
 
+document.querySelector("#saveClientButton").addEventListener("click", () => {
+  localStorage.setItem(STORAGE_KEYS.clientId, getClientId());
+  tokenClient = null;
+  accessToken = "";
+  updateDriveInfo();
+  updateDriveButtons();
+  setSaveState("Client saved", "saved");
+});
+
+signInButton.addEventListener("click", signIn);
+findFileButton.addEventListener("click", findDriveFile);
+createFileButton.addEventListener("click", createDriveFile);
+saveNowButton.addEventListener("click", saveBoard);
+exportButton.addEventListener("click", exportJsonFile);
+unlinkButton.addEventListener("click", unlinkDriveFile);
+importInput.addEventListener("change", () => {
+  const file = importInput.files?.[0];
+  if (file) importJsonFile(file);
+  importInput.value = "";
+});
+
 document.querySelectorAll("[data-filter]").forEach((button) => {
   button.addEventListener("click", () => {
     document.querySelectorAll("[data-filter]").forEach((candidate) => candidate.classList.remove("active"));
@@ -433,20 +750,11 @@ document.querySelectorAll("[data-filter]").forEach((button) => {
 
 searchInput.addEventListener("input", applyFilters);
 document.querySelector("#addSectionButton").addEventListener("click", addSection);
-document.querySelector("#reloadButton").addEventListener("click", () => loadBoard().catch((error) => {
-  setSaveState("불러오기 실패", "error");
-  console.error(error);
-}));
+document.querySelector("#reloadButton").addEventListener("click", loadDriveFile);
 document.querySelector("#expandButton").addEventListener("click", () => {
   document.querySelectorAll("details").forEach((details) => { details.open = true; });
 });
 document.querySelector("#collapseButton").addEventListener("click", () => {
   document.querySelectorAll(".item").forEach((details) => { details.open = false; });
   document.querySelectorAll(".section").forEach((details) => { details.open = true; });
-});
-
-loadBoard().catch((error) => {
-  setSaveState("불러오기 실패", "error");
-  boardElement.textContent = error.message;
-  console.error(error);
 });

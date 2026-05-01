@@ -1,35 +1,56 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Blackboard</title>
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="./style.css">
 </head>
 <body>
   <div class="app">
     <header class="header">
       <div>
         <h1 id="boardTitle">Blackboard</h1>
-        <p id="meta" class="meta">JSON 데이터를 불러오는 중</p>
+        <p id="meta" class="meta">Connect Google Drive to load a board.</p>
       </div>
       <div class="status-strip" id="stats"></div>
     </header>
 
-    <section class="toolbar" aria-label="blackboard controls">
-      <input id="searchInput" class="search" type="search" placeholder="ID, 제목, 내용 검색" autocomplete="off">
+    <section class="drive-panel" aria-label="Google Drive settings">
+      <div class="drive-field">
+        <label for="clientIdInput">Google OAuth Client ID</label>
+        <input id="clientIdInput" type="text" autocomplete="off" placeholder="000000000000-xxxx.apps.googleusercontent.com">
+      </div>
+      <div class="drive-actions">
+        <button type="button" id="saveClientButton">Save Client ID</button>
+        <button type="button" id="signInButton">Connect Google</button>
+        <button type="button" id="findFileButton">Find Drive File</button>
+        <button type="button" id="createFileButton">Create Drive File</button>
+        <button type="button" id="saveNowButton">Save Now</button>
+        <label class="file-button">
+          Import JSON
+          <input id="importInput" type="file" accept="application/json,.json">
+        </label>
+        <button type="button" id="exportButton">Export JSON</button>
+        <button type="button" id="unlinkButton">Unlink</button>
+      </div>
+      <div id="driveInfo" class="drive-info">No Drive file linked.</div>
+    </section>
+
+    <section class="toolbar" aria-label="Blackboard controls">
+      <input id="searchInput" class="search" type="search" placeholder="Search ID, title, body" autocomplete="off">
       <div class="button-row">
-        <button type="button" data-filter="all" class="active">전체</button>
+        <button type="button" data-filter="all" class="active">All</button>
         <button type="button" data-filter="done">O</button>
-        <button type="button" data-filter="partial">△</button>
+        <button type="button" data-filter="partial">Partial</button>
         <button type="button" data-filter="todo">X</button>
         <button type="button" data-filter="review">*</button>
-        <button type="button" id="addSectionButton">섹션 추가</button>
-        <button type="button" id="expandButton">모두 펼침</button>
-        <button type="button" id="collapseButton">모두 접기</button>
-        <button type="button" id="reloadButton">새로고침</button>
+        <button type="button" id="addSectionButton">Add Section</button>
+        <button type="button" id="expandButton">Expand All</button>
+        <button type="button" id="collapseButton">Collapse All</button>
+        <button type="button" id="reloadButton">Reload Drive</button>
       </div>
-      <div id="saveState" class="save-state">대기 중</div>
+      <div id="saveState" class="save-state">Local</div>
     </section>
 
     <main id="board" class="board" aria-live="polite"></main>
@@ -37,33 +58,35 @@
 
   <dialog id="itemDialog" class="dialog">
     <form method="dialog" id="itemForm">
-      <h2 id="dialogTitle">항목 추가</h2>
+      <h2>Add Item</h2>
       <p id="dialogTarget" class="dialog-target"></p>
       <label>
         ID
         <input id="newItemId" name="id" required autocomplete="off">
       </label>
       <label>
-        제목
+        Title
         <input id="newItemTitle" name="title" required autocomplete="off">
       </label>
       <label>
-        상태
+        Status
         <select id="newItemStatus" name="status">
-          <option value="none">없음</option>
-          <option value="done">O 완료</option>
-          <option value="partial">△ 부분완료</option>
-          <option value="todo">X 미완료</option>
-          <option value="review">* 검증필요</option>
+          <option value="none">None</option>
+          <option value="done">O Done</option>
+          <option value="partial">Partial</option>
+          <option value="todo">X Todo</option>
+          <option value="review">* Review</option>
         </select>
       </label>
       <div class="dialog-actions">
-        <button type="button" id="cancelItemButton">취소</button>
-        <button type="submit">추가</button>
+        <button type="button" id="cancelItemButton">Cancel</button>
+        <button type="submit">Add</button>
       </div>
     </form>
   </dialog>
 
-  <script src="/app.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="./config.js"></script>
+  <script src="./app.js" defer></script>
 </body>
 </html>
