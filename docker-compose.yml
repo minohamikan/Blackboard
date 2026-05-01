@@ -1,0 +1,10 @@
+services:
+  blackboard:
+    build: .
+    ports:
+      - "4173:4173"
+    environment:
+      PORT: "4173"
+      BLACKBOARD_PATH: /app/document/Blackboard.json
+    volumes:
+      - ./document:/app/document

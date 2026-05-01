@@ -1,0 +1,11 @@
+node_modules/
+npm-debug.log
+
+# Local blackboard data. Keep this private and mount it at runtime.
+document/Blackboard.md
+document/Blackboard.json
+document/Blackboard.html
+document/.blackboard-backups/
+
+# Local scratch files
+.tmp-blackboard-test/
