@@ -52,6 +52,8 @@ document/Blackboard.html
 
 To import existing data, open the app, connect Google, then use `Import JSON` and `Create Drive File`.
 
+The optional top-level `currentItemId` field stores the item currently in progress. It should match an item `id`.
+
 ## Local Preview
 
 ```powershell

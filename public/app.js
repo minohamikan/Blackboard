@@ -35,6 +35,7 @@ const signInButton = document.querySelector("#signInButton");
 const findFileButton = document.querySelector("#findFileButton");
 const createFileButton = document.querySelector("#createFileButton");
 const saveNowButton = document.querySelector("#saveNowButton");
+const currentButton = document.querySelector("#currentButton");
 const importInput = document.querySelector("#importInput");
 const exportButton = document.querySelector("#exportButton");
 const unlinkButton = document.querySelector("#unlinkButton");
@@ -78,6 +79,7 @@ function createEmptyBoard() {
     version: 1,
     title: "Blackboard",
     updatedAt: new Date().toISOString(),
+    currentItemId: "",
     sections: []
   };
 }
@@ -115,6 +117,7 @@ function normalizeBoard(data) {
     version: 1,
     title: String(data?.title || "Blackboard").trim(),
     updatedAt: data?.updatedAt || new Date().toISOString(),
+    currentItemId: String(data?.currentItemId || "").trim(),
     sections: Array.isArray(data?.sections)
       ? data.sections.map((section, index) => ({
         id: String(section?.id || `section-${index + 1}`).trim(),
@@ -136,6 +139,11 @@ function flattenItems(items, output = []) {
 
 function allItems() {
   return board.sections.flatMap((section) => flattenItems(section.items));
+}
+
+function currentItem() {
+  if (!board.currentItemId) return null;
+  return allItems().find((item) => item.id === board.currentItemId) || null;
 }
 
 function itemSearchText(item) {
@@ -166,6 +174,39 @@ function updateStats() {
     stat("X", count.todo),
     stat("*", count.review)
   );
+}
+
+function updateCurrentButton() {
+  const item = currentItem();
+  currentButton.disabled = !item;
+  currentButton.textContent = item ? `Current: ${item.id || item.title}` : "Current";
+  currentButton.title = item ? `${item.title}\n${item.id}` : "No current item is set.";
+}
+
+function updateCurrentMarkers() {
+  const currentId = board.currentItemId;
+  document.querySelectorAll(".item").forEach((element) => {
+    const isCurrent = Boolean(currentId && element.dataset.id === currentId);
+    element.classList.toggle("current-item", isCurrent);
+  });
+
+  document.querySelectorAll("[data-current-action]").forEach((button) => {
+    const isCurrent = Boolean(currentId && button.dataset.itemId === currentId);
+    button.textContent = isCurrent ? "Current" : "Set Current";
+    button.disabled = isCurrent;
+  });
+
+  updateCurrentButton();
+}
+
+function setCurrentItem(item) {
+  if (!item.id) {
+    window.alert("Set an ID before marking this item as current.");
+    return;
+  }
+  board.currentItemId = item.id;
+  updateCurrentMarkers();
+  scheduleSave();
 }
 
 function stat(label, value) {
@@ -594,6 +635,7 @@ function render() {
   });
   boardElement.replaceChildren(fragment);
   applyFilters();
+  updateCurrentMarkers();
 }
 
 function renderSection(section, sectionIndex) {
@@ -649,6 +691,7 @@ function renderSection(section, sectionIndex) {
 
 function renderItem(item, section, parent, depth) {
   const details = makeElement("details", { className: `item depth-${Math.min(depth, 6)}` });
+  details.classList.toggle("current-item", Boolean(board.currentItemId && item.id === board.currentItemId));
   details.addEventListener("toggle", () => {
     if (details.open) resizeTextareasIn(details);
   });
@@ -677,9 +720,14 @@ function renderItem(item, section, parent, depth) {
   const body = makeElement("div", { className: "item-body" });
   const editorGrid = makeElement("div", { className: "editor-grid" });
   const idField = renderInputField("ID", item.id, (value) => {
+    const wasCurrent = board.currentItemId === item.id;
     item.id = value.trim();
     id.textContent = `[${item.id || "ID"}]`;
+    details.dataset.id = item.id;
+    setCurrentButton.dataset.itemId = item.id;
+    if (wasCurrent) board.currentItemId = item.id;
     details.dataset.search = itemSearchText(item);
+    updateCurrentMarkers();
     scheduleSave();
   });
   const titleField = renderInputField("Title", item.title, (value) => {
@@ -701,11 +749,17 @@ function renderItem(item, section, parent, depth) {
   });
 
   const actions = makeElement("div", { className: "item-actions" });
+  const setCurrentButton = makeElement("button", { className: "current-action", type: "button" });
+  setCurrentButton.dataset.currentAction = "true";
+  setCurrentButton.dataset.itemId = item.id;
+  setCurrentButton.textContent = board.currentItemId === item.id ? "Current" : "Set Current";
+  setCurrentButton.disabled = board.currentItemId === item.id;
+  setCurrentButton.addEventListener("click", () => setCurrentItem(item));
   const addChildBody = makeElement("button", { type: "button", text: "Add Child" });
   addChildBody.addEventListener("click", () => openAddDialog({ section, parent: item }));
   const deleteButton = makeElement("button", { className: "danger", type: "button", text: "Delete" });
   deleteButton.addEventListener("click", () => deleteItem(section, parent, item));
-  actions.append(addChildBody, deleteButton);
+  actions.append(setCurrentButton, addChildBody, deleteButton);
 
   const children = makeElement("div", { className: "children" });
   item.children.forEach((child) => {
@@ -801,8 +855,15 @@ function deleteItem(section, parent, item) {
   const list = parent ? parent.children : section.items;
   const index = list.indexOf(item);
   if (index >= 0) list.splice(index, 1);
+  if (containsItemId(item, board.currentItemId)) board.currentItemId = "";
   render();
   scheduleSave();
+}
+
+function containsItemId(item, id) {
+  if (!id) return false;
+  if (item.id === id) return true;
+  return item.children.some((child) => containsItemId(child, id));
 }
 
 function addSection() {
@@ -845,6 +906,52 @@ function applyFilters() {
   }
 }
 
+function setActiveFilter(value) {
+  document.querySelectorAll("[data-filter]").forEach((candidate) => {
+    candidate.classList.toggle("active", candidate.dataset.filter === value);
+  });
+  activeFilter = value;
+}
+
+function clearFilters() {
+  searchInput.value = "";
+  setActiveFilter("all");
+  applyFilters();
+}
+
+function currentItemElement() {
+  if (!board.currentItemId) return null;
+  return [...document.querySelectorAll(".item")].find((item) => item.dataset.id === board.currentItemId) || null;
+}
+
+function revealCurrentItem() {
+  if (!currentItem()) {
+    window.alert("No current item is set.");
+    return;
+  }
+
+  clearFilters();
+  const element = currentItemElement();
+  if (!element) {
+    window.alert("The current item could not be found.");
+    return;
+  }
+
+  let current = element;
+  while (current) {
+    current.open = true;
+    current.hidden = false;
+    current = current.parentElement?.closest("details");
+  }
+
+  window.requestAnimationFrame(() => {
+    resizeTextareasIn(element);
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+    element.classList.add("current-flash");
+    window.setTimeout(() => element.classList.remove("current-flash"), 1400);
+  });
+}
+
 saveClientButton.addEventListener("click", () => {
   localStorage.setItem(STORAGE_KEYS.clientId, getClientId());
   tokenClient = null;
@@ -868,14 +975,13 @@ importInput.addEventListener("change", () => {
 
 document.querySelectorAll("[data-filter]").forEach((button) => {
   button.addEventListener("click", () => {
-    document.querySelectorAll("[data-filter]").forEach((candidate) => candidate.classList.remove("active"));
-    button.classList.add("active");
-    activeFilter = button.dataset.filter;
+    setActiveFilter(button.dataset.filter);
     applyFilters();
   });
 });
 
 searchInput.addEventListener("input", applyFilters);
+currentButton.addEventListener("click", revealCurrentItem);
 document.querySelector("#addSectionButton").addEventListener("click", addSection);
 reloadButton.addEventListener("click", loadCurrentBoard);
 document.querySelector("#expandButton").addEventListener("click", () => {
