@@ -2,6 +2,6 @@
   "private": true,
   "scripts": {
     "blackboard:migrate": "node tools/migrate-blackboard-json.js",
-    "serve": "npx http-server public -p 4173"
+    "serve": "node tools/serve-public.js"
   }
 }
