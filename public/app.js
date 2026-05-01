@@ -180,6 +180,19 @@ function setSaveState(text, className = "") {
   saveState.className = `save-state ${className}`.trim();
 }
 
+function autoResizeTextarea(textarea) {
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight + 2}px`;
+}
+
+function queueTextareaResize(textarea) {
+  window.requestAnimationFrame(() => autoResizeTextarea(textarea));
+}
+
+function resizeTextareasIn(root) {
+  root.querySelectorAll("textarea").forEach(autoResizeTextarea);
+}
+
 function updateDriveInfo() {
   if (isLocalFileMode) {
     driveInfo.textContent = `Local file mode. Reading and saving ${localFileName}.`;
@@ -586,6 +599,9 @@ function render() {
 function renderSection(section, sectionIndex) {
   const details = makeElement("details", { className: "section" });
   details.open = true;
+  details.addEventListener("toggle", () => {
+    if (details.open) resizeTextareasIn(details);
+  });
   details.dataset.search = [
     section.id,
     section.title,
@@ -613,8 +629,10 @@ function renderSection(section, sectionIndex) {
   const body = makeElement("div", { className: "section-body" });
   const note = makeElement("textarea", { className: "section-note", value: section.body.join("\n") });
   note.placeholder = "Section notes";
+  queueTextareaResize(note);
   note.addEventListener("input", () => {
     section.body = note.value.split("\n");
+    autoResizeTextarea(note);
     scheduleSave();
   });
 
@@ -631,6 +649,9 @@ function renderSection(section, sectionIndex) {
 
 function renderItem(item, section, parent, depth) {
   const details = makeElement("details", { className: `item depth-${Math.min(depth, 6)}` });
+  details.addEventListener("toggle", () => {
+    if (details.open) resizeTextareasIn(details);
+  });
   details.dataset.id = item.id;
   details.dataset.status = item.status;
   details.dataset.search = itemSearchText(item);
@@ -671,9 +692,11 @@ function renderItem(item, section, parent, depth) {
 
   const bodyEditor = makeElement("textarea", { className: "body-editor", value: item.body.join("\n") });
   bodyEditor.placeholder = "Completion conditions, reasons, notes";
+  queueTextareaResize(bodyEditor);
   bodyEditor.addEventListener("input", () => {
     item.body = bodyEditor.value.split("\n");
     details.dataset.search = itemSearchText(item);
+    autoResizeTextarea(bodyEditor);
     scheduleSave();
   });
 
@@ -857,6 +880,7 @@ document.querySelector("#addSectionButton").addEventListener("click", addSection
 reloadButton.addEventListener("click", loadCurrentBoard);
 document.querySelector("#expandButton").addEventListener("click", () => {
   document.querySelectorAll("details").forEach((details) => { details.open = true; });
+  window.requestAnimationFrame(() => resizeTextareasIn(boardElement));
 });
 document.querySelector("#collapseButton").addEventListener("click", () => {
   document.querySelectorAll(".item").forEach((details) => { details.open = false; });

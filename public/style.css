@@ -416,8 +416,9 @@ summary::-webkit-details-marker {
 
 .section-note {
   width: 100%;
-  min-height: 64px;
-  resize: vertical;
+  min-height: 132px;
+  overflow: hidden;
+  resize: none;
   padding: 9px 10px;
   color: #2d3748;
 }
@@ -510,8 +511,9 @@ summary::-webkit-details-marker {
 
 .body-editor {
   width: 100%;
-  min-height: 96px;
-  resize: vertical;
+  min-height: 156px;
+  overflow: hidden;
+  resize: none;
   padding: 9px 10px;
   font-size: 14px;
 }
